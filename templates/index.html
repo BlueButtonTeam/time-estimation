@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>轴类零件加工时间估算</title>
+    <style>
+        body { font-family: '微软雅黑', Arial, sans-serif; margin: 20px; background: #f4f7f6; color: #333; }
+        .container { background: #fff; padding: 20px 30px; border-radius: 10px; max-width: 900px; margin: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px;}
+        h2 { color: #34495e; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; margin-top: 30px;}
+        h3 { color: #2980b9; margin-top: 25px; }
+        label { display: block; margin-top: 15px; font-weight: bold; color: #555; }
+        input[type="text"], input[type="number"], select, textarea {
+            width: calc(100% - 18px);
+            padding: 10px;
+            margin-top: 5px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            box-sizing: border-box;
+            font-size: 1em;
+        }
+        textarea {
+            min-height: 100px;
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+            white-space: pre-wrap; /* 让JSON内容可以换行显示 */
+            line-height: 1.5;
+        }
+        .btn {
+            background: #3498db; color: #fff; border: none; padding: 12px 25px;
+            border-radius: 5px; cursor: pointer; margin-top: 25px; font-size: 1.1em;
+            transition: background-color 0.3s ease;
+        }
+        .btn:hover { background: #2980b9; }
+        .result {
+            background: #fff; /*与外部容器背景一致，或者用一个浅色背景 #ecf0f1 */
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border: 1px solid #e0e0e0;
+        }
+        .alert {
+            color: #c0392b;
+            background: #fadbd8;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #f5b7b1;
+        }
+        .process-section {
+            border: 1px solid #e0e0e0;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            background-color: #fdfefe;
+        }
+        .process-section h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            border-bottom: 1px dashed #bdc3c7;
+            padding-bottom: 8px;
+        }
+        .process-section ul {
+            padding-left: 20px;
+            list-style-type: disc; /* 更清晰的项目符号 */
+        }
+        .process-section code {
+            background-color: #ecf0f1;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+            color: #2c3e50;
+            display: block; /* 让公式单独一行显示 */
+            margin-top: 5px;
+            white-space: pre-wrap; /* 允许公式内部换行 */
+        }
+        .total-time-section {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #27ae60;
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e8f8f5;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .edit-field-group div {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px dotted #eee;
+        }
+        .edit-field-group div:last-child {
+            border-bottom: none;
+        }
+
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>轴类零件加工时间估算</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="alert">
+            {% for message in messages %}
+                <p>{{ message }}</p>
+            {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% if step == 'upload' %}
+    <form method="post" enctype="multipart/form-data">
+        <label for="file_upload">上传图纸（PDF）</label>
+        <input type="file" id="file_upload" name="file" accept="application/pdf" required>
+
+        <label for="material_select">选择材料类型</label>
+        <select id="material_select" name="material" required>
+            <option value="">请选择</option>
+            {% for m in materials %}
+            <option value="{{ m }}">{{ m }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="quantity_input">零件数量</label>
+        <input type="number" id="quantity_input" name="quantity" min="1" value="1" required>
+
+        <button class="btn" type="submit">上传并分析</button>
+    </form>
+
+    {% elif step == 'edit' %}
+    <h2>编辑识别结果</h2>
+    <form method="post" action="{{ url_for('calculate') }}">
+        <input type="hidden" name="filename" value="{{ filename }}">
+        <input type="hidden" name="material" value="{{ material }}">
+        <input type="hidden" name="quantity" value="{{ quantity }}">
+        
+        <div class="edit-field-group">
+            <!-- 基本信息 -->
+            <div class="process-section">
+                <h3>基本信息</h3>
+                <div>
+                    <label for="field_零件名称">零件名称</label>
+                    <input type="text" id="field_零件名称" name="field_零件名称" value="{{ shape_features['零件名称'] if '零件名称' in shape_features else '' }}">
+                </div>
+                <div>
+                    <label for="field_长度(mm)">长度(mm)</label>
+                    <input type="number" step="any" id="field_长度(mm)" name="field_长度(mm)" value="{{ shape_features['长度(mm)'] if '长度(mm)' in shape_features else '0' }}">
+                </div>
+                <div>
+                    <label for="field_宽度(mm)">宽度(mm)</label>
+                    <input type="number" step="any" id="field_宽度(mm)" name="field_宽度(mm)" value="{{ shape_features['宽度(mm)'] if '宽度(mm)' in shape_features else '0' }}">
+                </div>
+                <div>
+                    <label for="field_高度(mm)">高度(mm)</label>
+                    <input type="number" step="any" id="field_高度(mm)" name="field_高度(mm)" value="{{ shape_features['高度(mm)'] if '高度(mm)' in shape_features else '0' }}">
+                </div>
+                <div>
+                    <label for="field_毛坯体积(mm³)">毛坯体积(mm³)</label>
+                    <input type="number" step="any" id="field_毛坯体积(mm³)" name="field_毛坯体积(mm³)" value="{{ shape_features['毛坯体积(mm³)'] if '毛坯体积(mm³)' in shape_features else '0' }}">
+                </div>
+                <div>
+                    <label for="field_净体积(mm³)">净体积(mm³)</label>
+                    <input type="number" step="any" id="field_净体积(mm³)" name="field_净体积(mm³)" value="{{ shape_features['净体积(mm³)'] if '净体积(mm³)' in shape_features else '0' }}">
+                </div>
+            </div>
+
+            <!-- 磨削加工相关特征 -->
+            <div class="process-section">
+                <h3>磨削加工相关特征</h3>
+                <div>
+                    <label for="field_最严格表面粗糙度">最严格表面粗糙度(Ra)</label>
+                    <input type="number" step="0.1" id="field_最严格表面粗糙度" name="field_最严格表面粗糙度" value="{{ shape_features['最严格表面粗糙度'] if '最严格表面粗糙度' in shape_features else '1.6' }}">
+                </div>
+                <div>
+                    <label for="field_Ra≤0.8的表面长度(mm)">Ra≤0.8的表面长度(mm)</label>
+                    <input type="number" step="any" id="field_Ra≤0.8的表面长度(mm)" name="field_Ra≤0.8的表面长度(mm)" value="{{ shape_features['Ra≤0.8的表面长度(mm)'] if 'Ra≤0.8的表面长度(mm)' in shape_features else '0' }}">
+                </div>
+                <div>
+                    <label for="field_需要磨削的表面">需要磨削的表面描述</label>
+                    <input type="text" id="field_需要磨削的表面" name="field_需要磨削的表面" value="{{ shape_features['需要磨削的表面'] if '需要磨削的表面' in shape_features else '' }}">
+                    <div id="grind-desc-zh" style="color:#2d8cf0;margin-top:4px;"></div>
+                </div>
+            </div>
+
+            <!-- 铣削加工相关特征 -->
+            <div class="process-section">
+                <h3>铣削加工相关特征</h3>
+                <div>
+                    <label for="field_槽的数量">槽的数量</label>
+                    <input type="number" step="1" id="field_槽的数量" name="field_槽的数量" value="{{ shape_features['槽的数量'] if '槽的数量' in shape_features else '0' }}">
+                </div>
+                <div>
+                    <label for="field_槽特征总体积(mm³)">槽特征总体积(mm³)</label>
+                    <input type="number" step="any" id="field_槽特征总体积(mm³)" name="field_槽特征总体积(mm³)" value="{{ shape_features['槽特征总体积(mm³)'] if '槽特征总体积(mm³)' in shape_features else '0' }}">
+                </div>
+                {% set slot_count = shape_features['槽的数量']|int if '槽的数量' in shape_features else 0 %}
+                {% for i in range(1, (slot_count if slot_count <= 3 else 3) + 1) %}
+                <div>
+                    <label>槽{{ i }}长度(mm)</label>
+                    <input type="number" step="any" name="field_槽特征_{{ i }}_长度(mm)" value="{{ shape_features['槽特征'][i-1]['长度(mm)'] if '槽特征' in shape_features and shape_features['槽特征']|length >= i and '长度(mm)' in shape_features['槽特征'][i-1] else '' }}">
+                </div>
+                <div>
+                    <label>槽{{ i }}宽度(mm)</label>
+                    <input type="number" step="any" name="field_槽特征_{{ i }}_宽度(mm)" value="{{ shape_features['槽特征'][i-1]['宽度(mm)'] if '槽特征' in shape_features and shape_features['槽特征']|length >= i and '宽度(mm)' in shape_features['槽特征'][i-1] else '' }}">
+                </div>
+                <div>
+                    <label>槽{{ i }}深度(mm)</label>
+                    <input type="number" step="any" name="field_槽特征_{{ i }}_深度(mm)" value="{{ shape_features['槽特征'][i-1]['深度(mm)'] if '槽特征' in shape_features and shape_features['槽特征']|length >= i and '深度(mm)' in shape_features['槽特征'][i-1] else '' }}">
+                </div>
+                {% endfor %}
+                {% if slot_count > 3 %}
+                <div style="color:#c0392b;">如有更多槽请在上传图纸时补充，或联系管理员。</div>
+                {% endif %}
+            </div>
+
+            <!-- 螺纹加工相关特征 -->
+            <div class="process-section">
+                <h3>螺纹加工相关特征</h3>
+                <div>
+                    <label for="field_螺旋面数量">螺旋面数量</label>
+                    <input type="number" step="1" id="field_螺旋面数量" name="field_螺旋面数量" value="{{ shape_features['螺旋面数量'] if '螺旋面数量' in shape_features else '0' }}">
+                </div>
+                <div>
+                    <label for="field_螺纹规格">螺纹规格（M后的数字）</label>
+                    <input type="number" step="any" id="field_螺纹规格" name="field_螺纹规格" value="{{ shape_features['螺纹规格'] if '螺纹规格' in shape_features else '0' }}">
+                </div>
+                <div>
+                    <label for="field_螺纹长度(mm)">螺纹长度(mm)</label>
+                    <input type="number" step="any" id="field_螺纹长度(mm)" name="field_螺纹长度(mm)" value="{{ shape_features['螺纹长度(mm)'] if '螺纹长度(mm)' in shape_features else '0' }}">
+                </div>
+            </div>
+        </div>
+
+        {% if output %}
+            <div class="alert">错误详情: <pre>{{ output }}</pre></div>
+        {% endif %}
+        
+        <button class="btn" type="submit">确认并计算加工时间</button>
+        <a href="/" class="btn" style="background-color: #7f8c8d; margin-left: 10px;">返回重新上传</a>
+    </form>
+
+    {% elif step == 'result' %}
+    <div class="result">
+        <h2>加工时间计算结果</h2>
+        {% if calculation_details and calculation_details.times %}
+            {% set times = calculation_details.times %}
+            <div class="process-section">
+                <h3>车床加工</h3>
+                <p><strong>加工时间:</strong> {{ times.turning.time|hms }}</p>
+            </div>
+            <div class="process-section">
+                <h3>磨削加工</h3>
+                <p><strong>加工时间:</strong> {{ times.grinding.time|hms }}</p>
+            </div>
+            <div class="process-section">
+                <h3>铣削加工</h3>
+                <p><strong>加工时间:</strong> {{ times.milling.time|hms }}</p>
+            </div>
+            <div class="process-section">
+                <h3>螺纹加工</h3>
+                <p><strong>加工时间:</strong> {{ times.threading.time|hms }}</p>
+            </div>
+            <div class="total-time-section">
+                单件总加工时间估计: {{ times.total_time|hms }}<br>
+                {% if quantity and quantity > 0 %}
+                总加工时间（{{ quantity }}件）: {{ (times.total_time * quantity)|hms }}
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="alert">
+                <p>未能获取详细的加工时间计算结果。请检查输入数据或联系管理员。</p>
+                {% if output %}
+                    <p>错误信息: {{ output }}</p>
+                {% endif %}
+            </div>
+        {% endif %}
+        <div class="button-group" style="margin-top: 20px; text-align: center;">
+            <form method="post" action="{{ url_for('index') }}" style="display: inline-block; margin-right: 10px;">
+                <input type="hidden" name="file" value="{{ filename }}">
+                <input type="hidden" name="material" value="{{ material }}">
+                <input type="hidden" name="quantity" value="{{ quantity }}">
+                <button type="submit" class="btn" style="background-color: #2ecc71;">返回编辑页面</button>
+            </form>
+            <a href="/" class="btn" style="background-color: #3498db;">返回首页</a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    // 参数名称的中文映射
+    const parameterTranslations = {
+        // 车削参数
+        "material_removal_rate_rough": "粗加工材料去除率",
+        "material_removal_rate_finish": "精加工材料去除率",
+        "cutting_speed": "切削速度",
+        "feed_rate": "进给量",
+        "cutting_depth": "切削深度",
+        
+        // 磨削参数
+        "workpiece_speed": "工件转速",
+        "radial_depth": "径向磨深",
+        "axial_feed": "轴向进给",
+        "surface_speed": "表面线速度",
+        
+        // 铣削参数
+        "tool_diameter": "刀具直径",
+        "spindle_speed_rough": "粗加工主轴转速",
+        "spindle_speed_finish": "精加工主轴转速",
+        "feed_per_tooth": "每齿进给量",
+        "axial_depth": "轴向切深",
+        "radial_width": "径向切宽",
+        
+        // 螺纹参数
+        "thread_pitch": "螺距",
+        "thread_length": "螺纹长度",
+        "spindle_speed": "主轴转速",
+        "number_of_passes": "加工次数",
+        "exact_thread_spec_match": "精确匹配螺纹规格"
+    };
+
+    // 参数单位的映射
+    const parameterUnits = {
+        "粗加工材料去除率": "mm³/s",
+        "精加工材料去除率": "mm³/s",
+        "切削速度": "m/min",
+        "进给量": "mm/rev",
+        "切削深度": "mm",
+        "工件转速": "RPM",
+        "径向磨深": "mm",
+        "轴向进给": "mm/min",
+        "表面线速度": "m/s",
+        "刀具直径": "mm",
+        "粗加工主轴转速": "RPM",
+        "精加工主轴转速": "RPM",
+        "每齿进给量": "mm/tooth",
+        "轴向切深": "mm",
+        "径向切宽": "mm",
+        "螺距": "mm",
+        "螺纹长度": "mm",
+        "主轴转速": "RPM",
+        "进给速度": "mm/min"
+    };
+
+    // 英文磨削表面描述自动翻译为中文
+    function translateGrindDesc(desc) {
+        if (!desc) return '';
+        // 常见模式自动翻译
+        let zh = desc;
+        zh = zh.replace(/Bearing\/Precision surfaces/i, '轴承/精密表面');
+        zh = zh.replace(/sections with k6\/m6 tolerance/i, '段，公差等级k6/m6');
+        zh = zh.replace(/sections with [a-zA-Z0-9\/]+ tolerance/i, function(m){
+            return m.replace('sections with ', '段，公差等级').replace(' tolerance','');
+        });
+        zh = zh.replace(/Outer cylindrical surfaces/i, '外圆柱面');
+        zh = zh.replace(/inner bore cylindrical surface/i, '内孔圆柱面');
+        zh = zh.replace(/and/gi, '和');
+        zh = zh.replace(/\(Ø/g, '（Ø');
+        zh = zh.replace(/\)/g, '）');
+        zh = zh.replace(/, /g, '、');
+        zh = zh.replace(/sections?/gi, '段');
+        zh = zh.replace(/tolerance/gi, '公差');
+        zh = zh.replace(/precision surfaces?/gi, '精密表面');
+        zh = zh.replace(/bearing surfaces?/gi, '轴承表面');
+        return zh;
+    }
+    window.addEventListener('DOMContentLoaded', function(){
+        var grindInput = document.getElementById('field_需要磨削的表面');
+        var grindZh = document.getElementById('grind-desc-zh');
+        if(grindInput && grindZh){
+            var zh = translateGrindDesc(grindInput.value);
+            if(zh && zh !== grindInput.value){
+                grindZh.innerText = zh;
+            } else {
+                grindZh.innerText = '';
+            }
+            grindInput.addEventListener('input', function(){
+                var zh = translateGrindDesc(grindInput.value);
+                if(zh && zh !== grindInput.value){
+                    grindZh.innerText = zh;
+                } else {
+                    grindZh.innerText = '';
+                }
+            });
+        }
+    });
+</script>
+</body>
+</html> 

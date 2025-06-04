@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>轴类零件加工时间估算</title>
+    <style>
+        body { font-family: '微软雅黑', Arial, sans-serif; background: #f4f7f6; color: #333; }
+        .container { background: #fff; padding: 40px 30px; border-radius: 10px; max-width: 500px; margin: 100px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; }
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 30px auto 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .msg { font-size: 1.2em; margin-top: 20px; }
+        .error { color: #c0392b; background: #fadbd8; padding: 15px; border-radius: 5px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="loader"></div>
+    <div class="msg">正在分析图纸，请稍候...</div>
+    <div id="error" class="error" style="display:none;"></div>
+</div>
+<script>
+    // 轮询后端分析状态
+    const filename = "{{ filename }}";
+    const material = "{{ material }}";
+    const quantity = "{{ quantity }}";
+    function checkStatus() {
+        fetch(`/check_status?filename=${encodeURIComponent(filename)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'done') {
+                    // 跳转到编辑页面
+                    const form = document.createElement('form');
+                    form.method = 'post';
+                    form.action = '/';
+                    form.style.display = 'none';
+                    form.innerHTML = `<input name="file" value="${filename}"><input name="material" value="${material}"><input name="quantity" value="${quantity}">`;
+                    document.body.appendChild(form);
+                    form.submit();
+                } else if (data.status === 'error') {
+                    document.getElementById('error').style.display = '';
+                    document.getElementById('error').innerText = '分析失败：' + (data.msg || '未知错误');
+                } else {
+                    setTimeout(checkStatus, 1500);
+                }
+            })
+            .catch(() => {
+                document.getElementById('error').style.display = '';
+                document.getElementById('error').innerText = '无法连接服务器，请稍后重试。';
+            });
+    }
+    setTimeout(checkStatus, 1000);
+</script>
+</body>
+</html> 
